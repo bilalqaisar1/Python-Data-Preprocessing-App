@@ -567,81 +567,6 @@ if uploaded_file:
     st.write("**Quick Statistics:**")
     st.write(df.describe())
     
-    # Correlation Matrix
-    st.markdown("<h3 style='color: #1976d2;'>Correlation Matrix 📈</h3>", unsafe_allow_html=True)
-    numeric_cols = df.select_dtypes(include=[np.number]).columns
-    if len(numeric_cols) > 1:
-        fig = px.imshow(df[numeric_cols].corr(),
-                       color_continuous_scale='RdBu',
-                       aspect='auto')
-        st.plotly_chart(fig)
-    
-    # Data Distribution
-    st.markdown("<h3 style='color: #1976d2;'>Data Distribution 📊</h3>", unsafe_allow_html=True)
-    selected_column = st.selectbox("Select column for distribution plot:", df.columns)
-    
-    if df[selected_column].dtype in ['int64', 'float64']:
-        fig = px.histogram(df, x=selected_column, nbins=30)
-        st.plotly_chart(fig)
-    else:
-        fig = px.bar(df[selected_column].value_counts())
-        st.plotly_chart(fig)
-    
-    # Outlier Detection
-    st.markdown("<h3 style='color: #1976d2;'>Outlier Detection 🔍</h3>", unsafe_allow_html=True)
-    numeric_columns = df.select_dtypes(include=[np.number]).columns
-    if len(numeric_columns) > 0:
-        selected_column_outlier = st.selectbox("Select column for outlier detection:", numeric_columns)
-        fig = px.box(df, y=selected_column_outlier)
-        st.plotly_chart(fig)
-        
-        # Calculate and display outlier statistics
-        Q1 = df[selected_column_outlier].quantile(0.25)
-        Q3 = df[selected_column_outlier].quantile(0.75)
-        IQR = Q3 - Q1
-        outliers = df[(df[selected_column_outlier] < (Q1 - 1.5 * IQR)) | 
-                     (df[selected_column_outlier] > (Q3 + 1.5 * IQR))][selected_column_outlier]
-        
-        st.write(f"Number of outliers detected: {len(outliers)}")
-        if len(outliers) > 0:
-            st.write("Outlier values:", outliers.values)
-    
-    # Data Cleaning Options
-    st.markdown("<h3 style='color: #1976d2;'>Data Cleaning Options 🧹</h3>", unsafe_allow_html=True)
-    
-    # Duplicate Rows
-    duplicates = df.duplicated().sum()
-    st.write(f"Number of duplicate rows: {duplicates}")
-    if duplicates > 0:
-        if st.button("Remove Duplicate Rows"):
-            df = df.drop_duplicates()
-            st.session_state.processed_df = df
-            st.success("Duplicate rows removed successfully!")
-    
-    # Handle Outliers
-    if len(numeric_columns) > 0:
-        st.write("**Handle Outliers**")
-        outlier_column = st.selectbox("Select column for outlier treatment:", numeric_columns)
-        outlier_method = st.selectbox("Select outlier handling method:", 
-                                    ["None", "Remove", "Cap", "Replace with Mean"])
-        
-        if outlier_method != "None":
-            Q1 = df[outlier_column].quantile(0.25)
-            Q3 = df[outlier_column].quantile(0.75)
-            IQR = Q3 - Q1
-            outlier_mask = (df[outlier_column] < (Q1 - 1.5 * IQR)) | (df[outlier_column] > (Q3 + 1.5 * IQR))
-            
-            if outlier_method == "Remove":
-                df = df[~outlier_mask]
-            elif outlier_method == "Cap":
-                df.loc[df[outlier_column] < (Q1 - 1.5 * IQR), outlier_column] = Q1 - 1.5 * IQR
-                df.loc[df[outlier_column] > (Q3 + 1.5 * IQR), outlier_column] = Q3 + 1.5 * IQR
-            elif outlier_method == "Replace with Mean":
-                df.loc[outlier_mask, outlier_column] = df[outlier_column].mean()
-            
-            st.session_state.processed_df = df
-            st.success(f"Outliers in {outlier_column} handled using {outlier_method} method!")
-
     # Enhanced Stats Dashboard with Advanced Cards
     stats_html = f"""
         <style>
@@ -863,6 +788,83 @@ if uploaded_file:
 
     else:
         st.success("Your dataset has no missing values!")
+
+    # Only show outlier detection after missing values have been handled
+    if not missing_info.empty:
+        st.info("Please handle missing values before proceeding to outlier detection.")
+    else:
+        # Outlier Detection
+        st.markdown("<h3 style='color: #1976d2;'>Outlier Detection 🔍</h3>", unsafe_allow_html=True)
+        numeric_columns = df.select_dtypes(include=[np.number]).columns
+        if len(numeric_columns) > 0:
+            selected_column_outlier = st.selectbox("Select column for outlier detection:", numeric_columns)
+            fig = px.box(df, y=selected_column_outlier)
+            st.plotly_chart(fig)
+            
+            # Calculate and display outlier statistics
+            Q1 = df[selected_column_outlier].quantile(0.25)
+            Q3 = df[selected_column_outlier].quantile(0.75)
+            IQR = Q3 - Q1
+            outliers = df[(df[selected_column_outlier] < (Q1 - 1.5 * IQR)) | 
+                         (df[selected_column_outlier] > (Q3 + 1.5 * IQR))][selected_column_outlier]
+            
+            st.write(f"Number of outliers detected: {len(outliers)}")
+            if len(outliers) > 0:
+                st.write("Outlier values:", outliers.values)
+
+            # Handle Outliers
+            st.write("**Handle Outliers**")
+            outlier_method = st.selectbox("Select outlier handling method:", 
+                                        ["None", "Remove", "Cap", "Replace with Mean"])
+
+            # Button layout for outlier handling
+            col1, col2, col3 = st.columns([1, 1, 1])
+            with col1:
+                process_outliers_button = st.button("Apply Changes", key="process_outliers_button", type="primary")
+            with col2:
+                save_outliers_button = st.button("Save Changes", key="save_outliers_button", disabled=not process_outliers_button)
+            with col3:
+                # Download button for outlier-processed data
+                if 'temp_outlier_df' in st.session_state:
+                    download_data = st.session_state.temp_outlier_df
+                else:
+                    download_data = df
+                st.download_button(
+                    "Download Dataset",
+                    download_data.to_csv(index=False),
+                    "processed_data_with_outliers.csv",
+                    "text/csv",
+                    key='download-csv-outliers'
+                )
+
+            if process_outliers_button and outlier_method != "None":
+                temp_df = df.copy()
+                Q1 = temp_df[selected_column_outlier].quantile(0.25)
+                Q3 = temp_df[selected_column_outlier].quantile(0.75)
+                IQR = Q3 - Q1
+                outlier_mask = (temp_df[selected_column_outlier] < (Q1 - 1.5 * IQR)) | (temp_df[selected_column_outlier] > (Q3 + 1.5 * IQR))
+                
+                if outlier_method == "Remove":
+                    temp_df = temp_df[~outlier_mask]
+                elif outlier_method == "Cap":
+                    temp_df.loc[temp_df[selected_column_outlier] < (Q1 - 1.5 * IQR), selected_column_outlier] = Q1 - 1.5 * IQR
+                    temp_df.loc[temp_df[selected_column_outlier] > (Q3 + 1.5 * IQR), selected_column_outlier] = Q3 + 1.5 * IQR
+                elif outlier_method == "Replace with Mean":
+                    temp_df.loc[outlier_mask, selected_column_outlier] = temp_df[selected_column_outlier].mean()
+                
+                # Store temporary results
+                st.session_state.temp_outlier_df = temp_df
+                
+                # Preview changes
+                st.write("### Preview of Processed Data")
+                st.write(temp_df.head())
+                st.success(f"Outliers in {selected_column_outlier} handled using {outlier_method} method!")
+
+            if save_outliers_button and 'temp_outlier_df' in st.session_state:
+                # Save changes permanently
+                st.session_state.processed_df = st.session_state.temp_outlier_df.copy()
+                df = st.session_state.processed_df
+                st.success("Changes saved successfully! You can now process other columns or download the dataset.")
 
 # Add particles background
 st.markdown("""
